@@ -8,3 +8,9 @@ export interface Snapshot{study:Study;treatments:Treatment[];readings:Reading[]}
 export interface Result{n:number;k:number;h_raw:number;h:number;df:number;p_asymptotic:number;p_underflow:boolean;tie_term:number;tie_correction:number;dunn_variance:number;ties:{grade:number;count:number;average_rank:number;term:number}[];groups:Group[];pairs:Pair[];ranked_readings:Reading[];alpha:number;omnibus_reject:boolean;family_size:number;fingerprint:string;p_method:string;snapshot:Snapshot}
 export interface Run{id:number;study_id:number;name:string;alpha:number;status:'queued'|'running'|'completed'|'failed';snapshot:Snapshot;result:Result;error:string;created_at:string}
 export interface Note{id:number;name:string;run_id:number;rationale:string;status:'draft'|'approved'|'rejected';reviewer_note:string;reviewed_by:string;created_at:string}
+
+export interface DpBudget{study_id:number;total_epsilon:number;spent_epsilon:number;remaining_epsilon:number;preset_by:string;created_at:string}
+export interface DpCell{grade:number;noisy_count:number}
+export interface DpTreatment{code:string;name:string;noisy_counts:DpCell[]}
+export interface DpResult{mechanism:string;adjacency:string;adjacency_explanation:string;sensitivity_l1:number;epsilon:number;epsilon_micros:number;noise_scale:number;grade_domain:number[];treatments:DpTreatment[];disclosure:string;release_digest?:string;publication_id?:number}
+export interface DpRelease{id:number;study_id:number;epsilon:number;status:'reserved'|'released'|'failed';release_digest:string;names:string[];result:DpResult|null;error:string;reused:boolean;created_at:string}

@@ -100,3 +100,50 @@ CREATE TABLE grade_readings (
 )
 
 ;
+
+CREATE TABLE dp_budgets (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	study_id INTEGER NOT NULL,
+	total_epsilon_micros INTEGER NOT NULL,
+	spent_epsilon_micros INTEGER NOT NULL,
+	preset_by VARCHAR(160) NOT NULL,
+	created_at DATETIME NOT NULL,
+	PRIMARY KEY (id),
+	UNIQUE (study_id),
+	FOREIGN KEY(study_id) REFERENCES grade_studies (id)
+)
+
+;
+
+
+CREATE TABLE dp_publications (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	study_id INTEGER NOT NULL,
+	fingerprint VARCHAR(64) NOT NULL,
+	epsilon_micros INTEGER NOT NULL,
+	status VARCHAR(20) NOT NULL,
+	noise_seed VARCHAR(64) NOT NULL,
+	snapshot JSON NOT NULL,
+	result JSON NOT NULL,
+	error VARCHAR(600) NOT NULL,
+	created_at DATETIME NOT NULL,
+	PRIMARY KEY (id),
+	UNIQUE (study_id, fingerprint, epsilon_micros),
+	FOREIGN KEY(study_id) REFERENCES grade_studies (id)
+)
+
+;
+
+
+CREATE TABLE dp_release_names (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	publication_id INTEGER NOT NULL,
+	name VARCHAR(140) NOT NULL,
+	requested_by VARCHAR(160) NOT NULL,
+	created_at DATETIME NOT NULL,
+	PRIMARY KEY (id),
+	UNIQUE (name),
+	FOREIGN KEY(publication_id) REFERENCES dp_publications (id)
+)
+
+;

@@ -5,3 +5,4 @@ from src.models.run import RankTestRun
 from src.models.note import FollowupNote
 from src.models.user import User
 from src.models.audit import Audit
+from src.models.dp import DpBudget, DpPublication, DpReleaseName

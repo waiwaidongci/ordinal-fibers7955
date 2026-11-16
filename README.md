@@ -10,9 +10,9 @@
 
 | 角色 | 页面 | 权限 | 典型动作 |
 |---|---|---|---|
-| admin 复检负责人 | 六页全部 | 写入、排队、说明、批准/退回、分发 | 批注新批独立取样与盲评设计 |
-| analyst 检验分析员 | 六页全部 | 来源/工艺/等级写入、排队、提出说明、下载已批准说明 | 核对并列项及所有组对 |
-| viewer 纸材观察员 | 六页全部 | 只读与已批准CSV下载，写入/审批403 | 阅读边界与分发复检依据 |
+| admin 复检负责人 | 七页全部 | 写入、排队、说明、批准/退回、分发 | 批注新批独立取样与盲评设计 |
+| analyst 检验分析员 | 七页全部 | 来源/工艺/等级写入、排队、提出说明、下载已批准说明 | 核对并列项及所有组对 |
+| viewer 纸材观察员 | 七页全部 | 只读、已批准CSV与已发布加噪表下载，写入/审批/发布403 | 阅读边界与分发复检依据 |
 
 演示账号 `admin@qingnie.local`、`analyst@qingnie.local`、`viewer@qingnie.local`；共同密码 `Qingnie2026!`。
 
@@ -26,6 +26,7 @@
 6. 09:25 在并列与平均秩页核对Σ(t³−t)=34842，逐份检查合并平均秩。下/上中位位置保留原等级，不把偶数样本插值成3.5级。
 7. 09:35 提出“四工艺独立复检说明”，同时说明拒绝/未拒绝组对、可能的分布形状差异与下一批独立盲评设计。
 8. 10:00 宋槐用admin留批注并同意复检；周予用viewer下载 `followup-note-<id>.csv`，含完整总体、四组摘要与六组对。新数据另建快照，旧结果不回写。
+9. 10:30 宋槐在差分发布页预设研究总ε=1.0，林蘖以ε=0.2发布“对外合作 · 等级分布”：4工艺×9等级的加噪频数，噪声尺度2/ε=10，L1敏感度2。周予以换名重试，仍复用同一份已扣费结果；更正等级会产生新版本并再次扣费，预算不重置。
 
 以上数值来自固定seed真实API/worker结果。seed不预置检验结果，用户需实际排队。
 
@@ -67,6 +68,20 @@ Compose恰好5服务、健康依赖、数据库/Redis/共享artifacts命名卷�
 
 JWT8小时，PBKDF2-SHA256存储密码。角色授权、审计、统一错误与Redis每IP每分钟30次登录限流。验证失败仅输出loc/msg，不回显NaN/Inf非法输入造成JSON编码500。单研究2–5工艺，每组至少5份、总计≤2000份；活动任务最多3项。数据库是任务状态权威，Redis唤醒失败仍扫描；单worker中断任务按冻结快照重算。
 
+## 差分隐私发布
+
+对外合作只看各工艺的形成等级频数，不还原单份试样。研究由复检负责人预设**总ε**（`POST /dp/budgets`，按研究唯一、累计花费、永不重置；调低到低于已花费会被409拒绝）。发布入口 `POST /dp/releases` 只接收 `study_id`、`name`、`epsilon`，返回4×9的加噪频数表。
+
+- **邻接关系**：同一研究内替换一份独立试样记录（改变其形成等级和/或所属预定义工艺），试样总数不变。
+- **敏感度**：一次替换最多使一个格减1、另一个格加1，全表L1敏感度为2；因此每格独立加 `Laplace(0, 2/ε)`，整表满足纯ε-差分隐私。
+- **发布身份**：`(study, 冻结输入的SHA256, ε)`。名称不参与身份，所以同一冻结输入与ε换名重试会复用同一份已扣费结果（`reused=true`），不重新抽噪、不再次扣费；已有发布耗尽预算后仍可免费换名。更正等级或新增版本改变输入摘要，成为新身份并按剩余ε再次扣费。同名不能指向另一份结果（409）。
+- **并发不透支**：扣费是 `spent + ε <= total` 的条件UPDATE，与发布行插入同一事务；并发下只有额度内的请求成功，其余429，被拒请求不留部分扣费。
+- **中断**：`reserved` 行在任何计算前持久化噪声种子 `noise_seed` 与冻结快照。落盘后中断、计算异常或进程重启都按同一入参、同一ε、同一作业行原子地取代价；种子持久化，所以重试恢复**同一**加噪结果， ε不退、不重新抽噪。`failed` 行可用 `POST /dp/releases/{id}/retry` 恢复。任何新发布都必须先成功扣费，因此“先算后扣”造成的免费噪声不会发生。
+- **页面与分发同源**：页面只渲染 `result`，`GET /dp/releases/{id}/export` 只导出同一份已扣费加噪表、机制、ε、噪声尺度、敏感度、邻接说明与预算行；不含原始频数、逐份等级、平均秩或精确/渐近检验。服务端另存冻结快照与输入摘要用于去重，但**从不**通过API或分发文件返回——确定性输入摘要会让持有候选数据的人离线核对逐份等级，从而破坏DP保证。
+- 原内部分析不变：`rank_test_runs`、秩检验结果页与复检说明导出继续保留逐份等级与完整检验。
+
+加噪频数为负或非整数是正常现象，不可读作真实试样数、比例或工艺优劣；发布表也不能与外部数据拼接推断个体。`GET /dp/budgets`、`GET /dp/releases`、`GET /dp/releases/{id}` 对所有登录角色可读；预设总ε仅admin，发布仅admin/analyst。校验把ε限制在6位小数（微ε整数存储），范围 `0.000001–1000`。
+
 ## 公式与解释
 
 全部N合并一次排秩，并列取平均秩。若某等级全体出现t次，则T=Σ(t³−t)，C=1−T/(N³−N)。KW未修正统计量等价为 `12/[N(N+1)] Σ n_g (Rbar_g−(N+1)/2)²`，H=H_raw/C，df=k−1，p=chi2.sf(H,df)。使用中心化表达式减少抵消误差，C与Dunn方差的分子用整数并列项计算。
@@ -81,11 +96,11 @@ H的p是χ²渐近，Dunn是正态渐近，不是exact。Holm依赖单项p的适
 
 ## 代码与本地开发
 
-五个实体GradeStudy、Treatment、GradeReading、RankTestRun、FollowupNote各自贯穿model/schema/service/controller/route/API。studyStore、measurementsStore、researchStore承接对应状态；六页为总览、来源、配置、结果、说明、审计，登录另计。GradeDots复用于总览/结果，PairFamilyTable复用于结果/说明；共享PageHeading、StatusBadge、ErrorNotice、StudySelect、RunSelect，hooks useTask/usePolling、format工具。所有宽图/表局部滚动，grid显式minmax(0,1fr)/min-width:0；结果工艺选择按真实已加载组同步。
+五个实体GradeStudy、Treatment、GradeReading、RankTestRun、FollowupNote各自贯穿model/schema/service/controller/route/API。studyStore、measurementsStore、researchStore、dpStore承接对应状态；七页为总览、来源、配置、结果、说明、审计、差分发布，登录另计。GradeDots复用于总览/结果，PairFamilyTable复用于结果/说明；共享PageHeading、StatusBadge、ErrorNotice、StudySelect、RunSelect，hooks useTask/usePolling、format工具。所有宽图/表局部滚动，grid显式minmax(0,1fr)/min-width:0；结果工艺选择按真实已加载组同步。
 
 目录：backend/src/{models,schemas,services,controllers,routes,config,constants,middlewares,utils}；数学services/{rank_pool,dunn,rank_inference}.py；backend/scripts/seed_demo.py与migrations/001_initial.sql。frontend/src/{api,stores,types,constants,components/common,hooks,pages,router,utils}。
 
-Role/RunStatus/NoteStatus前后端分别定义于backend/src/constants/enums.py和frontend/src/constants/enums.ts，角色类型在types/domain.ts；RunStatus用于运行service/worker，NoteStatus用于schema/service，前端用于状态与账户/页面。等级枚举1–9在前端constants/enums.ts，后端schemas/reading.py与rank_inference.py严格校验。
+Role/RunStatus/NoteStatus/DpStatus前后端分别定义于backend/src/constants/enums.py和frontend/src/constants/enums.ts，角色类型在types/domain.ts；RunStatus用于运行service/worker，NoteStatus用于schema/service，DpStatus用于差分发布，前端用于状态与账户/页面。等级枚举1–9在前端constants/enums.ts，后端schemas/reading.py与rank_inference.py严格校验。
 
 ```bash
 docker compose up -d db redis
